@@ -1,0 +1,342 @@
+---
+layout: default
+title: Homework 2
+nav_order: 11
+permalink: /hw_2/
+---
+
+# CSCI 3212 Homework 2: Hashing, Tries, String Matching, and Graph Representations
+
+**Due Date:** Friday, November 6, 2026 @ 23:59  
+**Topics Covered:** Direct addressing and hashing, collision handling by chaining and linear probing, load factor, hash functions for strings, tries and prefix queries, the naive matcher, Rabin-Karp rolling hashes, Knuth-Morris-Pratt prefix functions, approximate matching with one mismatch, and graph representations (adjacency matrices versus adjacency lists).
+
+> **Note:** Credit will not be given just for answers - show all your work: your reasoning, the steps you took, and how you reached your answer.
+
+In the traces below, strings are 1-indexed when you are asked to number positions (as in the KMP pseudocode) and shifts are 0-based when you are asked for the list of occurrences; each problem says which convention it uses.
+
+---
+
+## Part I: Pen-and-paper exercises (submit as PDF)
+
+### Problem 1: Hashing - from Keys to Slots
+*(Type: Asymptotic order, Hand trace, Analysis)*
+
+**Figure 1.** The keys `K = {12, 19, 26, 33, 5, 7}` are inserted, in that order, into a hash table with `M = 7` slots using `h(k) = k mod 7`.
+
+1. **Direct addressing versus hashing.** The keys are 9-digit student IDs, so the key universe has `10^9` possible values, but only `n = 100` records are stored.
+   - How much memory does direct addressing need, and what does a hash table with `M = 97` slots need?
+   - Compute the load factor for `M = 97` and give the expected number of comparisons for a successful search with separate chaining under the simple uniform hashing assumption.
+   - Why does the lectures' advice say to pick `M` prime and not close to a power of 2 or 10?
+2. **Separate chaining.** Insert the six keys of Figure 1 using separate chaining (new keys are appended to the end of their bucket).
+   - Give `h(k)` for every key and draw the six buckets.
+   - How many key comparisons does a lookup of `33` make? How many does a lookup of `8` make (a key that is not stored)?
+   - Five of the six keys land in the same bucket. Show why by writing the keys as `5 + 7t`, and explain what this says about the key set and about the choice of `M`.
+3. **Linear probing.** Now insert the same six keys, in the same order, into an open-addressing table with `M = 7` slots and linear probing (`h(k), h(k)+1, h(k)+2, ...` modulo 7); no resizing happens in this part. Count a *probe* for every slot examined, including the empty slot that ends a search.
+   - Give the table after each insertion and the number of probes that insertion needed.
+   - Give the final table, then count the probes for a lookup of `33` and for a failed lookup of `8`.
+   - Explain in two sentences why the key `5` needed five probes, and what *primary clustering* means here.
+4. **Load factor.**
+   - Compute the load factor after each of the six insertions. If the table doubles its capacity as soon as an insertion would push the load factor above `0.75`, after which insertion does the first resize happen, and what is the load factor immediately after that insertion?
+   - Under uniform hashing, the expected probes for an unsuccessful search with open addressing is about `1/(1 - α)`. Give the values for `α = 0.5, 0.75, 0.9`, and say what this implies about resizing at `0.75` rather than at `0.95`.
+   - Why can separate chaining tolerate `α > 1` while open addressing cannot?
+5. **Hashing strings.** A string `S` of length `L` is hashed with the polynomial `h(S) = (Σ s[i]·p^(L-1-i)) mod m`, where `p = 31` and `m = 97`, and `a = 1, b = 2, ..., z = 26`.
+   - Compute `h("cab")` and `h("acb")` (show the raw value before the modulus).
+   - Explain why the polynomial hash separates anagrams that a simple "sum of characters" hash would confuse.
+   - What properties should `p` and `m` have, and what is the risk of choosing `m = 2^16`?
+
+---
+
+### Problem 2: Tries and Prefix Queries
+*(Type: Hand trace, Analysis, Argument)*
+
+**Figure 2.** The dictionary `D = {cat, car, do, dog, dot}` is stored in a trie whose nodes have `children` (a map from characters to child nodes) and `is_end_of_word`.
+
+1. **Build it.** Draw the trie. Mark every node with `is_end_of_word = True`. How many nodes does it have, including the root?
+2. **Lookups.** Trace `search("do")`, `search("ca")` and `search("can")`: how many nodes are visited, and why does the second one fail even though the path exists?
+3. **Prefix queries.** List every word with prefix `do`. How many node steps does the query take (following the prefix plus enumerating the subtree)? How would a hash table answer the same query, and why is that expensive?
+4. **Cost.** Give the cost of insert, search, and delete for a key of length `L` in terms of `L`, and the space in terms of the number of words `N`, the maximum length `L`, and the alphabet size `|Σ|`. What changes if `children` is a hash map instead of an array?
+5. **Connecting tries to string matching.** You are given a long text `T` (length `n`) and a dictionary `D`, and you must report every word of `D` that occurs in `T`.
+   - Sketch a solution that walks the trie: at every start position of `T`, follow `T`'s characters through the trie and report words as they end. Give its running time in terms of `n`, the maximum word length `L`, and the size of the output, and say what it reports that a fixed-length window search does not.
+   - Sketch the alternative from the next problem: hash every length-`m` window of `T` and look the fingerprint up in a hash table of dictionary words. Give its expected time and the restriction it imposes on `D`.
+   - In two or three sentences, say which approach you would choose for (i) a static dictionary of 10,000 words of lengths 3 to 20 and a 100 MB text, and (ii) 1,000,000 words that all have length 20.
+
+---
+
+### Problem 3: Rabin-Karp and Rolling Hashes
+*(Type: Hand trace, Derivation, Analysis)*
+
+**Encoding from the lectures:** `a = 1, b = 2, ..., z = 26`, base `d = 10`, prime `q = 13`. The text is `T = "ababacab"` (length 8) and the pattern is `P = "aba"` (length 3); shifts are 0-based.
+
+1. **Fingerprints.** Compute `value("aba")` and its fingerprint `p = value("aba") mod q`. Compute `h = d^(m-1) mod q` and the fingerprint `t_0` of the first window.
+2. **The scan.** Fill in a table with one row per shift `s = 0, ..., 5`, giving the window, its exact value, its fingerprint `t_s` (using the rolling update), whether `t_s` = `p`, and - for every hit - the result of verifying the characters. Which hit is spurious, and why does it not produce a wrong answer?
+3. **Derivation.** Show that dropping `T[s+1]` and appending `T[s+m+1]` can be done in `O(1)`:
+   `t_{s+1} = (d·(t_s - T[s+1]·h) + T[s+m+1]) mod q`,
+   where `h = d^(m-1) mod q`. Explain why the subtraction is taken modulo `q` (that is, why the intermediate value may be negative).
+4. **Complexity.** Give the preprocessing and matching costs, and the expected total. Then give an input on which Rabin-Karp degrades to the brute-force bound `Θ((n-m+1)·m)`. What does a large prime `q` change, and what does it not change?
+5. **Many patterns.** Explain how to search for `k` patterns at once using a hash table of fingerprints. What is the expected running time, what happens on a hit, and why is this useful for plagiarism detection (as in the lecture)?
+
+---
+
+### Problem 4: Knuth-Morris-Pratt
+*(Type: Hand trace, Argument)*
+
+**Figure 3.** The pattern `P = "ababaca"` (length 7) and the text `T = "abababacaba"` (length 11). Positions are 1-indexed, and `q` denotes the number of characters of `P` matched so far.
+
+1. **Prefix function.** Compute `π[i]` for `i = 1, ..., 7` and fill in the table. State the definition you used. Show how `π[5] = 3` is obtained from `P[1..5] = "ababa"`.
+2. **Trace.** Run the KMP matcher on `T`, giving a table with columns: step, `i`, `T[i]`, `q` before, the action (`extend`, or each fallback `q ← π[q]`), and `q` after. Mark the mismatch that forces a fallback and the position where a match is reported. How many character comparisons does the trace make in total (a fallback is not a comparison)?
+3. **Why it is linear.** Argue that the total number of comparisons is `O(n + m)`: say why `q` increases by at most one per text character, why every fallback strictly decreases `q`, and why `π[q] < q` for `q ≥ 1`.
+4. **Worst case for the naive matcher.** Take `T = a^n` and `P = a^(m-1)b`. Count the comparisons the naive matcher makes and the comparisons KMP makes. (Use `n = 20, m = 5` for the arithmetic, then give the general bounds.)
+5. **A second pattern.** Compute the prefix function of `P' = "aabaab"`, and say where KMP would fall back while matching `P'` against `T' = "aabaabaab"`.
+
+---
+
+### Problem 5: Approximate Matching with One Mismatch
+*(Type: Hand trace, Argument, Analysis)*
+
+**The problem.** The alphabet is `Σ = {a, b, c, d}`, the pattern length is `m = 3`, the dictionary is `D = {abc, abd, acd, bad, cab}`, and the text is `T = "abdcabb"` (length 7). Every word of `D` has length `m`.
+
+- The **Hamming distance** `H(x, y)` of two strings of length `m` is the number of positions where they differ (substitutions only; it is undefined for different lengths).
+- A word `w` has an **approximate occurrence at shift `s`** if `H(T[s+1..s+m], w) ≤ 1`. Exact occurrences count as approximate ones.
+- The output is every pair `(s, w)` with an approximate occurrence, sorted by `s` and then by `w`.
+
+1. **Warm-up.** Fill in a table of `H(window, w)` for every shift and every `w ∈ D`, and list the output.
+2. **Baseline.** Describe the brute-force algorithm and give its running time in terms of `n`, `m`, and the dictionary size `k`. How does it relate to the naive matcher's bound from the lectures?
+3. **Trie search with a mismatch budget.** Insert `D` into a trie and run the following search on one window `W`:
+
+   ```text
+   APPROX-SEARCH(v, W, b)              // v is a trie node, j = depth(v)
+     j = depth(v)
+     if j == m:
+         if v.is_end_of_word: report string(v)
+         return
+     for each (c, child) in v.children, in alphabetical order of c:
+         if c == W[j+1]:      APPROX-SEARCH(child, W, b)
+         else if b > 0:       APPROX-SEARCH(child, W, b - 1)
+   ```
+
+   The search starts with `APPROX-SEARCH(root, W, 1)`.
+   - Draw the trie for `D` and count its nodes.
+   - Trace the search on the window at shift `s = 4` (`W = "abb"`): list the nodes visited, in order, with the remaining budget, and the words reported.
+   - Explain why `b = 0` behaves exactly like an ordinary trie lookup.
+4. **Correctness.** Prove that the search reports exactly the words `w ∈ D` with `H(W, w) ≤ 1`. (Relate the budget `b` to the number of mismatches between `W[1..j]` and `string(v)`.)
+5. **Cost.** Show that one call visits at most `1 + m + (|Σ| - 1)·m(m+1)/2` nodes, and conclude that the whole algorithm runs in `O((n - m + 1)·|Σ|·m²)` time, independent of `k`. When is that better than the baseline of part 2?
+6. **A hashing alternative.** Instead of a trie, store the fingerprints of all dictionary words (with the encoding `a = 1, ..., d = 4`, base `d = 10`, prime `q = 13`). For a window with fingerprint `t`:
+   - show that changing the character at position `j` from `c` to `c′` gives the fingerprint `t′ = (t + (c′ - c)·d^(m-j)) mod q`, which is `O(1)` with precomputed powers;
+   - describe an algorithm that rolls the window and, at each shift, looks up the window's fingerprint and the fingerprints of its `m(|Σ| - 1)` one-substitution variants in a hash set, verifying characters on every hit;
+   - give its expected running time and compare its time and space with the trie and with the variant that stores the fingerprints of all one-substitution variants of the dictionary words.
+7. **Why not KMP?** In two or three sentences, explain why the prefix function `π` cannot be reused directly when one mismatch is allowed.
+
+---
+
+### Problem 6: Graph Representations - Adjacency Matrices versus Adjacency Lists
+*(Type: Asymptotic order, Hand trace)*
+
+**Figure 4.** An undirected graph on vertices `1, 2, 3, 4, 5, 6` with the edges `{1,2}, {1,3}, {2,4}, {3,4}, {4,5}, {5,6}`.
+
+1. **Write both representations.** Give the `6 × 6` adjacency matrix and the adjacency lists of Figure 4. How many entries of the matrix are non-zero, and what fraction of the matrix is that?
+2. **Storage.** For a graph with `V = 6 000` vertices and `E = 15 000` edges, how many cells does the adjacency matrix store (and how many megabytes is that at 4 bytes per cell), and how many entries does the adjacency list store (at 8 bytes per entry)? Compute the ratio.
+3. **Operations.** Which representation answers "are `u` and `v` adjacent?" in `O(1)`, and which one lists all neighbours of `v` in `O(deg(v))`? What does one sweep that examines every edge cost in each representation?
+4. **Choosing.** In which situations is the adjacency matrix the better choice? Give one concrete example and justify it in two or three sentences.
+
+---
+
+## Part II: Programming
+
+You will implement the data structures and matchers from Part I, then run one experiment. Four files are required:
+
+| File | Contents |
+|---|---|
+| `hash_table.py` | a chained hash table for string keys |
+| `string_search.py` | naive matcher, prefix function, KMP, Rabin-Karp |
+| `trie_approx.py` | a trie, and the three approximate matchers |
+| `experiment.py` | the runtime experiment and its plot |
+
+Standard library only, plus `matplotlib` for `experiment.py`. All files must run cleanly under Python 3.8+.
+
+---
+
+### Part II (a): A Chained Hash Table (`hash_table.py`)
+
+#### Required File and Signatures
+
+| File | Function or class | Returns / Signature |
+|---|---|---|
+| `hash_table.py` | `ChainedHashTable(capacity=8)` | Hash table with `capacity` buckets and separate chaining |
+| `hash_table.py` | `.hash_key(key)` | `int`: bucket index in `[0, capacity())`, using `h = (...((c₁·31 + c₂)·31 + ...)·31 + c_L) mod capacity()` with each `cᵢ` the ASCII code of a character |
+| `hash_table.py` | `.insert(key, value)` | `bool`: `True` for a new key, `False` when an existing key's value is replaced |
+| `hash_table.py` | `.lookup(key)` | the stored value, or `None` when the key is absent |
+| `hash_table.py` | `.delete(key)` | `bool`: `True` if the key was present and removed |
+| `hash_table.py` | `.keys()` | `List[str]`: every stored key, in any order |
+| `hash_table.py` | `.capacity()` | `int`: current number of buckets |
+| `hash_table.py` | `.load_factor()` | `float`: `len(table) / capacity()` |
+| `hash_table.py` | `len(table)` | `int`: number of stored pairs |
+
+#### Behavior Specification
+
+- Keys are non-empty strings. A bucket stores the `(key, value)` pairs that hash to it, and `lookup` compares whole keys (never just their hashes).
+- `insert` on an existing key replaces the value, returns `False`, and does not change the size.
+- The load factor must never exceed `0.75`: when an insertion would exceed it, first double the capacity and rehash every stored pair (the polynomial hash is recomputed with the new capacity), then insert.
+- `delete` removes the key (and its value) from its bucket; deleting a missing key returns `False`.
+- `capacity()` must grow, not shrink; `keys()` must contain every stored key exactly once.
+
+#### Worked Example
+
+```python
+table = ChainedHashTable(4)
+assert len(table) == 0 and table.lookup("x") is None
+
+for i in range(20):
+    assert table.insert(f"key{i}", i) is True
+assert len(table) == 20
+assert table.insert("key3", "updated") is False
+assert table.lookup("key3") == "updated"
+assert table.load_factor() <= 0.75
+assert table.capacity() > 4
+assert table.delete("key3") is True and table.delete("key3") is False
+assert table.lookup("key3") is None
+```
+
+#### Your Own Tests
+
+Under `if __name__ == "__main__":` in `hash_table.py`, include tests named so a reader can tell what they check, covering at least: inserting, updating, deleting, and looking up keys; collision of many keys in a two-bucket table; growth of `capacity` and the load-factor bound; and `keys()` matching the inserted set.
+
+---
+
+### Part II (b): Exact String Matching (`string_search.py`)
+
+#### Required File and Signatures
+
+| File | Function or class | Returns / Signature |
+|---|---|---|
+| `string_search.py` | `naive_search(text, pattern)` | `List[int]`: 0-based shifts where the pattern occurs |
+| `string_search.py` | `prefix_function(pattern)` | `List[int]`: `pi[i]` = longest proper prefix of `pattern[:i+1]` that is also a suffix |
+| `string_search.py` | `kmp_search(text, pattern)` | `List[int]`: shifts, using KMP |
+| `string_search.py` | `rabin_karp(text, pattern, q)` | `List[int]`: shifts, using a rolling hash modulo the prime `q` |
+
+#### Behavior Specification
+
+- All shifts are 0-based and the lists are in increasing order; an absent pattern gives `[]`. The pattern is non-empty, and `len(pattern) <= len(text)` may be assumed.
+- `prefix_function` follows the lecture definition: `pi[0] = 0`, and `pi[i]` is the length of the longest proper prefix of `pattern[:i+1]` that is also a suffix of `pattern[:i+1]`.
+- KMP must use the prefix function for fallbacks; it must not shift the pattern by fewer than one position at a time without consulting `pi`.
+- Rabin-Karp uses the encoding `a = 0, b = 1, ..., z = 25`, base `26`, and the given `q`; every fingerprint hit must be verified character by character, so hash collisions may cost time but never produce a wrong shift.
+- Do not call Python's built-in substring search, `in`, `find`, or regular expressions.
+
+#### Worked Example
+
+```python
+assert naive_search("abcabc", "abc") == [0, 3]
+assert prefix_function("ababaca") == [0, 0, 1, 2, 3, 0, 1]
+assert kmp_search("abababacaba", "ababaca") == [2]
+assert rabin_karp("ababacab", "aba", 13) == [0, 2]
+assert rabin_karp("ababacab", "aba", 1_000_000_007) == [0, 2]
+```
+
+#### Your Own Tests
+
+Under `if __name__ == "__main__":` in `string_search.py`, include at least: the prefix function of two or three patterns (including one with a repeated border); KMP and the naive matcher agreeing on random small texts; Rabin-Karp agreeing with the naive matcher for a small `q` (where collisions are frequent) and for a large `q`; and the overlapping case (`"aaa"` in `"aaaaa"`).
+
+---
+
+### Part II (c): Tries and Approximate Matching (`trie_approx.py`)
+
+#### Required File and Signatures
+
+| File | Function or class | Returns / Signature |
+|---|---|---|
+| `trie_approx.py` | `TrieNode()` | Node with `children` (a `dict` from characters to nodes) and `is_end_of_word` (`bool`) |
+| `trie_approx.py` | `Trie()` | With `root` (a `TrieNode`) |
+| `trie_approx.py` | `Trie.insert(word)` | `None` |
+| `trie_approx.py` | `Trie.search(word)` | `bool`: whether `word` was inserted as a complete word |
+| `trie_approx.py` | `Trie.words_with_prefix(prefix)` | `List[str]`: all stored words starting with `prefix`, alphabetically sorted |
+| `trie_approx.py` | `hamming(x, y)` | `int`: number of differing positions; `ValueError` if the lengths differ |
+| `trie_approx.py` | `brute_force_approx(text, words)` | `List[Tuple[int, str]]`: `(s, w)` pairs with `H ≤ 1`, sorted |
+| `trie_approx.py` | `trie_approx(text, words)` | same, using the trie search with budget 1 |
+| `trie_approx.py` | `rk_approx(text, words, q)` | same, using fingerprints modulo `q` |
+
+#### Behavior Specification
+
+- All words have the same length `m`, the text is at least as long as `m`, and the word list may be empty (then the answer is `[]`).
+- The output pairs are 0-based shifts, sorted by shift and then by word; each pair appears once.
+- `Trie.words_with_prefix("")` returns every word, sorted. Inserting the same word twice must not duplicate it.
+- `brute_force_approx` compares each window with each word using `hamming`.
+- `trie_approx` runs the `APPROX-SEARCH` of Problem 5 part 3 for every window, starting from the trie root with budget 1.
+- `rk_approx` follows the idea of Problem 5 part 6: dictionary fingerprints in a hash map, a rolling window fingerprint, and the fingerprints of the window's one-substitution variants; every candidate must be verified with `hamming`, so collisions cannot change the result. Use any fixed encoding with base at least the alphabet size (the reference uses `a = 0, ..., z = 25` with base 26; Problem 5 part 6 uses the lecture's `a = 1, ..., d = 4` with base 10 for its small example) - the choice only affects speed.
+
+#### Worked Example
+
+```python
+words = ["abc", "abd", "acd", "bad", "cab"]
+expected = [(0, "abc"), (0, "abd"), (0, "acd"), (3, "cab"), (4, "abc"), (4, "abd")]
+assert brute_force_approx("abdcabb", words) == expected
+assert trie_approx("abdcabb", words) == expected
+assert rk_approx("abdcabb", words, 13) == expected
+
+trie = Trie()
+for word in ["cat", "car", "do", "dog", "dot"]:
+    trie.insert(word)
+assert trie.search("do") is True and trie.search("ca") is False
+assert trie.words_with_prefix("do") == ["do", "dog", "dot"]
+assert hamming("abd", "abc") == 1
+```
+
+#### Your Own Tests
+
+Under `if __name__ == "__main__":` in `trie_approx.py`, include at least: trie search and prefix listing for the Figure 2 dictionary; `hamming` including the length-mismatch error; the three approximate matchers agreeing on the running example; and random small cases where all three must return the same pairs.
+
+---
+
+### Part II (d): Runtime Experiment (`experiment.py`)
+
+#### Required File and Signatures
+
+| File | Function or class | Returns / Signature |
+|---|---|---|
+| `experiment.py` | `ALPHABET`, `N`, `M`, `K_VALUES`, `TRIALS`, `Q` | the experiment's constants: alphabet `"abcd"`, text length 800, pattern length 5, `[10, 20, 40, 80, 160]`, 3, and `1_000_000_007` |
+| `experiment.py` | `random_dictionary(k, rng)` | `List[str]`: `k` distinct words of length `M`, sorted |
+| `experiment.py` | `random_text(n, rng)` | `str`: `n` characters over `ALPHABET` |
+| `experiment.py` | `time_method(method, *args)` | `float`: milliseconds for one call |
+| `experiment.py` | `run_experiment()` | `Dict[str, List[float]]` with the keys `"brute_force"`, `"trie"`, `"rk"`, each a list over `K_VALUES` |
+| `experiment.py` | `plot_results(results, path)` | `None`: writes the figure to `path` |
+
+#### Behavior Specification
+
+- `random_dictionary` must use the shared `random.Random` generator it is given (so runs are reproducible) and must return sorted, distinct words.
+- For every `k` in `K_VALUES`, build one dictionary with `random_dictionary(k, rng)`, and time each of the three matchers on the *same* text and dictionary; report the smallest of `TRIALS` timings in milliseconds.
+- `plot_results` draws runtime (ms) against `k` for the three methods on one set of axes (a log scale on the x-axis is recommended), with a legend, axis labels, and a title.
+- `main()` prints the timing table and saves the plot as `approx_matching.png`; the whole script should finish in about five seconds.
+
+#### Experiment Deliverable
+
+1. Submit `approx_matching.png`: runtime against `k` for brute force, the trie search, and Rabin-Karp.
+2. Print the timing table the plot is based on.
+3. In the PDF for Part I, add a short paragraph (3-5 sentences) interpreting the figure: which curve grows with `k` and why, why the other two are almost flat in `k`, what still grows inside them as `k` increases, and which method you would use for a large dictionary.
+
+---
+
+## Provided Test Harness
+
+A self-contained test checker is provided in `hw_checks.py`. It compares your functions against its own reference implementations and checks behaviour, so any correct implementation passes. Run:
+
+```bash
+python3 hw_checks.py
+```
+
+To run the checks against a specific directory, or to print a quick timing table:
+
+```bash
+python3 hw_checks.py . --perf
+```
+
+> `hw_checks.py` helps with testing, not debugging - it tells you a check failed, not why. Use your own unit tests in each file to diagnose and fix bugs.
+
+---
+
+## Submission
+
+Submit a single `.zip` file containing:
+
+1. `theory_answers.pdf`: your written solutions, tables, traces, and proofs for Part I (including the paragraph about the experiment).
+2. `hash_table.py`, `string_search.py`, `trie_approx.py`: your implementations.
+3. `experiment.py` and `approx_matching.png`: the experiment script and its plot.
+
+Code will be evaluated on correctness, adherence to the specified interfaces, respect for the conventions above, and documentation. Your own tests under `if __name__ == "__main__":` are graded as part of the submission.
